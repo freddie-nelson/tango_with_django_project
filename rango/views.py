@@ -3,9 +3,34 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse 
 from django.urls import reverse
+from datetime import datetime
 from rango.models import Category
 from rango.models import Page
 from rango.forms import CategoryForm, PageForm, UserForm, UserProfileForm
+
+def get_server_side_cookie(request, cookie, default_val=None):
+    val = request.session.get(cookie)
+    if not val:
+        val = default_val
+
+    return val
+
+def visitor_cookie_handler(request):
+    visits = int(get_server_side_cookie(request, "visits", "1"))
+    last_visit_cookie = get_server_side_cookie(request, "last_visit", str(datetime.now()))
+    last_visit_time = datetime.strptime(last_visit_cookie[:-7], "%Y-%m-%d %H:%M:%S")
+
+    # If it's been more than a day since the last visit...
+    if (datetime.now() - last_visit_time).days > 0:
+        visits = visits + 1
+        # Update the last visit cookie now that we have updated the count
+        request.session["last_visit"] = str(datetime.now())
+    else:
+        # Set the last visit cookie
+        request.session["last_visit"] = last_visit_cookie
+
+    # Update/set the visits cookie
+    request.session["visits"] = visits
 
 def index(request):
     category_list = Category.objects.order_by("-likes")[:5]
@@ -16,11 +41,23 @@ def index(request):
     context_dict["categories"] = category_list
     context_dict["pages"] = page_list
 
-    return render(request, "rango/index.html", context=context_dict)
+    visitor_cookie_handler(request)
+
+    # request.session.set_test_cookie()
+    response  = render(request, "rango/index.html", context=context_dict)
+    return response
+
 
 def about(request):
     context_dict = {"boldmessage": "This tutorial has been put together by freddie nelson."}
+
+    visitor_cookie_handler(request)
+    context_dict["visits"] = request.session["visits"]
     
+    # if request.session.test_cookie_worked():
+    #     print("TEST COOKIE WORKED!")
+    #     request.session.delete_test_cookie()
+
     return render(request, "rango/about.html", context=context_dict)
 
 def show_category(request, category_name_slug):
